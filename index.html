@@ -1685,11 +1685,15 @@
             }
 
             gameOver(success) {
-                this.state.active = false; clearInterval(this.timerInterval);
+                this.state.active = false; 
+                if(this.timerInterval) clearInterval(this.timerInterval);
                 document.getElementById('target-reticle').style.display = 'none';
+                document.getElementById('od-btn').style.display = 'none'; // Hide OD button on end
+                
                 const baseScore = this.state.kills * 100 * this.state.difficulty;
                 const score = baseScore + (success ? this.state.timeLeft * 50 : 0);
                 if (success) this.saveHighScore(score);
+                
                 const ratio = this.state.kills / this.state.targetKills;
                 let recLevel = this.state.difficulty;
                 if(success && ratio >= 1 && this.state.timeLeft > 20) recLevel = Math.min(5, recLevel + 1);
@@ -1700,23 +1704,22 @@
 
                 if(success) {
                     upBox.style.display = 'block';
-                    // Mission complete: return to base, offer next sortie
-                    document.getElementById('over-title').innerText = "RETURNING TO BASE";
-                    let stats = `MISSION COMPLETE!\nACE LEVEL ${this.state.difficulty} | KILLS: ${this.state.kills} / ${this.state.targetKills}\nSCORE: ${score}`;
-                    if(recLevel !== this.state.difficulty) stats += `\nRECOMMENDED NEXT: Level ${recLevel}`;
+                    document.getElementById('over-title').innerText = "MISSION ACCOMPLISHED";
+                    let stats = `ACE LEVEL ${this.state.difficulty} CLEAR!\nKILLS: ${this.state.kills} / ${this.state.targetKills}\nSCORE: ${score}`;
+                    if(recLevel > this.state.difficulty) stats += `\nPROMOTION RECOMMENDED: Level ${recLevel}`;
                     document.getElementById('over-stats').innerText = stats;
                     const nextLevel = Math.min(5, this.state.difficulty + 1);
                     btns.innerHTML = `
-                        <button class="start-btn" style="margin-top:10px;background:var(--accent);color:#000;" onclick="window._game.sortie(${nextLevel})">SORTIE LV${nextLevel}</button>
-                        <button class="start-btn" style="margin-top:8px;background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2);" onclick="window._game.sortie(${this.state.difficulty})">REPLAY LV${this.state.difficulty}</button>
-                        <button class="start-btn" style="margin-top:8px;" onclick="location.reload()">MAIN MENU</button>`;
+                        <button class="start-btn" style="margin-top:10px;background:var(--accent);color:#000;" onclick="window._game.sortie(${nextLevel})">NEXT SORTIE (LV${nextLevel})</button>
+                        <button class="start-btn" style="margin-top:8px;background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2);" onclick="window._game.sortie(${this.state.difficulty})">REPLAY MISSION</button>
+                        <button class="start-btn" style="margin-top:8px;" onclick="location.reload()">RETURN TO MENU</button>`;
                 } else {
+                    upBox.style.display = 'none';
                     document.getElementById('over-title').innerText = "MISSION FAILED";
-                    let stats = `ACE LEVEL ${this.state.difficulty} | KILLS: ${this.state.kills} / ${this.state.targetKills}\nSCORE: ${score}`;
-                    if(recLevel !== this.state.difficulty) stats += `\nRECOMMENDED: Level ${recLevel}`;
+                    let stats = `ACE LEVEL ${this.state.difficulty}\nKILLS: ${this.state.kills} / ${this.state.targetKills}\nSCORE: ${score}`;
                     document.getElementById('over-stats').innerText = stats;
                     btns.innerHTML = `
-                        <button class="start-btn" style="margin-top:10px;" onclick="window._game.sortie(${this.state.difficulty})">RETRY LV${this.state.difficulty}</button>
+                        <button class="start-btn" style="margin-top:10px;" onclick="window._game.sortie(${this.state.difficulty})">RETRY MISSION</button>
                         <button class="start-btn" style="margin-top:8px;background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2);" onclick="location.reload()">MAIN MENU</button>`;
                 }
                 document.getElementById('over-screen').style.display = 'flex';
@@ -1728,39 +1731,61 @@
                 // Clean up current scene entities
                 [...this.entities.enemies, ...this.entities.allies].forEach(e => this.scene.remove(e.mesh));
                 this.entities.bullets.forEach(b => this.scene.remove(b.mesh));
+                this.entities.missiles.forEach(m => this.scene.remove(m.mesh));
                 this.entities.particles.forEach(p => this.scene.remove(p.mesh));
+                
                 this.entities.enemies = []; this.entities.allies = [];
-                this.entities.bullets = []; this.entities.particles = [];
-                // Reset state for new sortie
+                this.entities.bullets = []; this.entities.missiles = []; this.entities.particles = [];
+                
+                // Reset state flags
                 this.state.difficulty = level;
                 this.diff = DIFF[level];
                 this.state.targetKills = this.diff.kills;
-                this.state.kills = 0; this.state.timeLeft = 300;
+                this.state.kills = 0; 
+                this.state.timeLeft = 300;
                 this.state.active = true;
                 this.state.opening = true;
                 this.openingPhase = 'elevator';
                 this.openingTimer = 4.0;
                 this.state.takeoff = false;
+                this.state.returning = false;
+                this.state.overdrive = 0;
+                this.state.odGauge = 0;
+                this.returnTimer = null;
+                this.slowmo = null;
+                this.bossSpawned = false;
+                this.odReadyNotified = false;
+                
+                // UI Reset
+                document.getElementById('over-screen').style.display = 'none';
+                document.getElementById('upgrade-box').style.display = 'none';
+                document.getElementById('od-fill').style.width = '0%';
+                document.getElementById('kill-val').innerText = '0';
+                document.getElementById('msg-box').innerText = "PREPARING FOR LAUNCH...";
+                
                 this.playerHP = this.diff.hp;
                 this.maxHP = this.playerHP;
                 this.missilesLeft = 3;
-                this.bossSpawned = false;
                 document.getElementById('missile-count').textContent = this.missilesLeft;
+                
                 this.combo = { count: 0, timer: 0, display: 0 };
                 this.input.thrust = 0; this.speed = 0;
                 this.player.position.set(0, -12, 1100);
                 this.player.quaternion.identity();
+                
                 for(let i=0; i<this.state.targetKills; i++) this.spawnUnit(false);
                 const allyCount = Math.max(2, Math.floor(this.state.targetKills / 5));
                 for(let i=0; i<allyCount; i++) this.spawnUnit(true);
-                document.getElementById('over-screen').style.display = 'none';
-                document.getElementById('msg-box').innerText = "AUTO TAKEOFF...";
+                
+                if(this.timerInterval) clearInterval(this.timerInterval);
                 this.timerInterval = setInterval(() => {
                     if(this.state.active && !this.state.paused) {
                         this.state.timeLeft--;
                         if(this.state.timeLeft <= 0) this.gameOver(false);
                     }
                 }, 1000);
+                
+                this.showRadio(`LEVEL ${level} MISSION START. Good luck.`, 3000);
             }
         }
         window.onload = () => { window._game = new Game(); };
