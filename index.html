@@ -1435,12 +1435,21 @@
                 const dots = document.getElementById('radar-dots'); dots.innerHTML = '';
                 const interference = (this.radarInterference > 0 && Math.random() > 0.5);
                 if (!interference) {
+                    const playerRotY = this.player.rotation.y;
+                    const cosR = Math.cos(-playerRotY);
+                    const sinR = Math.sin(-playerRotY);
+
                     [...this.entities.enemies, ...this.entities.allies, ...this.entities.landmarks].forEach(ent => {
                         const dx = ent.mesh.position.x - this.player.position.x;
                         const dz = ent.mesh.position.z - this.player.position.z;
-                        if(dx*dx + dz*dz < 10000*10000) {
+                        
+                        // Rotate relative coordinates based on player heading
+                        const rx = dx * cosR - dz * sinR;
+                        const rz = dx * sinR + dz * cosR;
+
+                        if(rx*rx + rz*rz < 10000*10000) {
                             const dot = document.createElement('div'); dot.className = 'radar-dot';
-                            dot.style.left = (dx / 10000) * 65 + 65 + 'px'; dot.style.top = (dz / 10000) * 65 + 65 + 'px';
+                            dot.style.left = (rx / 10000) * 65 + 65 + 'px'; dot.style.top = (rz / 10000) * 65 + 65 + 'px';
                             dot.style.backgroundColor = ent.isAlly ? 'var(--ally)' : (ent.name ? 'white' : 'var(--danger)');
                             dots.appendChild(dot);
                         }
