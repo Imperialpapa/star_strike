@@ -207,9 +207,19 @@
                 <div id="hp-fill" style="width:100%; height:100%; background:#00ff88; border-radius:4px; transition:width 0.3s;"></div>
             </div>
         </div>
+        <div class="hud-el" style="top:95px; left:15px; border-left:3px solid #ffaa00;">
+            <div style="font-size:8px; opacity:0.7;">OVERDRIVE</div>
+            <div style="width:80px; height:8px; background:rgba(255,255,255,0.15); border-radius:4px; overflow:hidden;">
+                <div id="od-fill" style="width:0%; height:100%; background:#ffaa00; border-radius:4px; transition:width 0.3s;"></div>
+            </div>
+        </div>
         <div class="hud-el hud-tr">
             <div style="font-size:8px; opacity:0.7;">KILLS / GOAL</div>
             <div style="font-size:16px;"><span id="kill-val">0</span> / <span id="target-val">0</span></div>
+        </div>
+        <div id="radio-box" style="position:absolute; bottom:160px; left:50%; transform:translateX(-50%); width:250px; background:rgba(0,40,40,0.6); border:1px solid var(--accent); border-radius:4px; padding:5px 10px; font-size:10px; color:var(--accent); display:none; pointer-events:none; z-index:150; box-shadow:0 0 10px rgba(0,242,255,0.2);">
+            <div style="font-size:7px; opacity:0.6; margin-bottom:2px; letter-spacing:1px;">RADIO CHATTER</div>
+            <div id="radio-text"></div>
         </div>
         <div class="hud-el hud-tm">
             <div style="font-size:8px; opacity:0.7;">REMAINING</div>
@@ -227,6 +237,9 @@
         </div>
         <div id="joystick-zone"><div id="joystick-guide"></div></div>
         <div id="auto-fire-btn">AUTO</div>
+        <div id="od-btn" style="position: absolute; bottom: 130px; right: 90px; width: 65px; height: 35px; border-radius: 6px; background: rgba(255,170,0,0.1); border: 1px solid rgba(255,170,0,0.3); display: none; flex-direction: column; justify-content: center; align-items: center; pointer-events: auto; color: #ffaa00; font-weight: 700; z-index: 1000; font-size: 9px; letter-spacing: 1px; box-shadow:0 0 15px rgba(255,170,0,0.2);">
+            OVERDRIVE
+        </div>
         <div id="missile-btn" style="position: absolute; bottom: 85px; right: 90px; width: 65px; height: 35px; border-radius: 6px; background: rgba(255,165,0,0.2); border: 1px solid rgba(255,165,0,0.4); display: flex; flex-direction: column; justify-content: center; align-items: center; pointer-events: auto; color: #ffa500; font-weight: 700; z-index: 1000; font-size: 9px; letter-spacing: 1px;">
             MISSILE
             <div id="missile-count" style="font-size:8px; opacity:0.8;">3</div>
@@ -268,7 +281,7 @@
 
         class Game {
             constructor() {
-                this.state = { active: false, takeoff: false, paused: false, unit: 'JET', difficulty: 1, kills: 0, targetKills: 10, timeLeft: 300 };
+                this.state = { active: false, takeoff: false, paused: false, unit: 'JET', difficulty: 1, kills: 0, targetKills: 10, timeLeft: 300, odGauge: 0, overdrive: 0, maneuver: null };
                 this.input = { joystick: {x:0, y:0}, thrust: 0.5, firing: false, missile: false };
                 this.leverInput = 0;
                 this.upgrades = { fireRate: 1.0, bulletSpeed: 1.0, tracking: 1.0 };
@@ -297,6 +310,16 @@
                 scores.sort((a, b) => b.score - a.score);
                 localStorage.setItem('skyline_aces_scores', JSON.stringify(scores.slice(0, 10)));
                 this.loadHighScores();
+            }
+
+            showRadio(text, duration = 3000) {
+                const box = document.getElementById('radio-box');
+                const txt = document.getElementById('radio-text');
+                txt.textContent = text;
+                box.style.display = 'block';
+                if(this.audio.lockon) this.audio.lockon.play(); // Use lockon beep for radio alert
+                if(this.radioTimeout) clearTimeout(this.radioTimeout);
+                this.radioTimeout = setTimeout(() => { box.style.display = 'none'; }, duration);
             }
 
             initScene() {
@@ -547,8 +570,18 @@
                     group.add(new THREE.Mesh(new THREE.BoxGeometry(70, 30, 250), new THREE.MeshStandardMaterial({color:0x556666})));
                     const tower = new THREE.Mesh(new THREE.BoxGeometry(40, 50, 60), new THREE.MeshStandardMaterial({color:0x667777}));
                     tower.position.set(0, 38, -40); group.add(tower);
-                    const mast = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 30, 4), new THREE.MeshStandardMaterial({color:0x888888}));
-                    mast.position.set(0, 68, -40); group.add(mast);
+                    
+                    // Turret
+                    const turret = new THREE.Group();
+                    const base = new THREE.Mesh(new THREE.CylinderGeometry(15, 18, 10, 8), new THREE.MeshStandardMaterial({color:0x444444}));
+                    const barrel = new THREE.Mesh(new THREE.BoxGeometry(5, 5, 40), new THREE.MeshStandardMaterial({color:0x222222}));
+                    barrel.position.set(0, 8, -20);
+                    turret.add(base, barrel);
+                    turret.position.set(0, 15, 60);
+                    group.add(turret);
+                    group.userData.turret = turret;
+                    group.userData.isWarship = true;
+                    group.userData.fireTimer = Math.random() * 5;
                 } else if(type === 1) {
                     // Cargo ship (medium, colorful containers)
                     group.add(new THREE.Mesh(new THREE.BoxGeometry(50, 20, 180), new THREE.MeshStandardMaterial({color:0x884422})));
@@ -702,6 +735,7 @@
                     fireTimer: 0.5 
                 });
                 document.getElementById('msg-box').innerText = "BOSS DETECTED!";
+                this.showRadio("Massive signal detected. Approach with caution. Take down that carrier!", 5000);
             }
 
             spawnMissile(target) {
@@ -773,6 +807,21 @@
                 const radarLeft = window.innerWidth / 2 - 65;
                 jZone.style.left = (radarLeft - 140) + 'px';
                 this.joystickActive = false;
+                
+                // Double tap for evasive maneuver
+                let lastTap = 0;
+                jZone.addEventListener('touchstart', (e) => {
+                    const now = Date.now();
+                    if (now - lastTap < 300) {
+                        if (!this.state.maneuver && this.state.active && !this.state.takeoff) {
+                            this.state.maneuver = { type: 'roll', timer: 1.0 };
+                            this.showRadio("EVASIVE MANEUVER!", 1500);
+                            if(navigator.vibrate) navigator.vibrate([50, 30, 50]);
+                        }
+                    }
+                    lastTap = now;
+                }, {passive:true});
+
                 nipplejs.create({
                     zone: jZone,
                     mode: 'dynamic',
@@ -792,6 +841,19 @@
                     e.preventDefault();
                     if (this.missilesLeft > 0) {
                         this.input.missile = true;
+                    }
+                };
+
+                const odBtn = document.getElementById('od-btn');
+                odBtn.ontouchstart = (e) => {
+                    e.preventDefault();
+                    if (this.state.odGauge >= 100) {
+                        this.state.overdrive = 8.0; // 8 seconds of OD
+                        this.state.odGauge = 0;
+                        odBtn.style.display = 'none';
+                        document.getElementById('od-fill').style.width = '0%';
+                        this.showRadio("OVERDRIVE ACTIVATED! INFINITE MISSILES & MAX SPD!", 4000);
+                        if(navigator.vibrate) navigator.vibrate([50, 50, 200]);
                     }
                 };
 
@@ -840,6 +902,9 @@
                 document.getElementById('start-screen').style.display = 'none';
                 document.getElementById('ui-layer').style.display = 'block';
                 document.getElementById('msg-box').innerText = "PREPARING FOR LAUNCH...";
+                setTimeout(() => {
+                    this.showRadio("This is Tower. You are cleared for takeoff. Good hunting, Ace.", 4000);
+                }, 1000);
                 for(let i=0; i<this.state.targetKills; i++) this.spawnUnit(false);
                 const allyCount = Math.max(2, Math.floor(this.state.targetKills / 5));
                 for(let i=0; i<allyCount; i++) this.spawnUnit(true);
@@ -860,6 +925,14 @@
                 let delta = Math.min(this.clock.getDelta(), 0.1);
                 const realDelta = delta;
                 if(this.slowmo) delta *= 0.15;
+
+                // Overdrive logic
+                if (this.state.overdrive > 0) {
+                    this.state.overdrive -= realDelta;
+                    if (this.state.overdrive <= 0) {
+                        this.showRadio("OVERDRIVE EXHAUSTED", 2000);
+                    }
+                }
 
                 // Lever: update thrust (clamped 0~1)
                 if(this.leverInput) {
@@ -917,7 +990,13 @@
                     const pitch = this.input.joystick.y;
                     const roll = -this.input.joystick.x;
 
-                    if(this.joystickActive && (Math.abs(pitch) > 0.05 || Math.abs(roll) > 0.05)) {
+                    if (this.state.maneuver) {
+                        this.state.maneuver.timer -= delta;
+                        if (this.state.maneuver.type === 'roll') {
+                            this.player.rotateZ(12 * delta); // Fast roll
+                        }
+                        if (this.state.maneuver.timer <= 0) this.state.maneuver = null;
+                    } else if(this.joystickActive && (Math.abs(pitch) > 0.05 || Math.abs(roll) > 0.05)) {
                         // Manual control
                         this.player.rotateX(pitch * 2.5 * delta);
                         this.player.rotateZ(roll * 3.5 * delta);
@@ -938,7 +1017,8 @@
                             this.player.quaternion.slerp(targetQuat, 0.04);
                         }
                     }
-                    this.speed = THREE.MathUtils.lerp(this.speed, this.input.thrust * this.diff.maxSpd, 0.05);
+                    const speedMult = this.state.overdrive > 0 ? 1.5 : 1.0;
+                    this.speed = THREE.MathUtils.lerp(this.speed, this.input.thrust * this.diff.maxSpd * speedMult, 0.05);
                     this.player.translateZ(-this.speed);
                 }
 
@@ -1065,12 +1145,46 @@
                     this.bgmGain.gain.setTargetAtTime(tension, this.bgmCtx.currentTime, 0.3);
                 }
 
-                this.entities.ships.forEach(s => { s.mesh.translateZ(s.speed); if(s.mesh.position.z > 40000) s.mesh.position.z = -40000; });
+                this.entities.ships.forEach(s => { 
+                    s.mesh.translateZ(s.speed); if(s.mesh.position.z > 40000) s.mesh.position.z = -40000; 
+                    // Turret logic for warships
+                    if (s.mesh.userData.isWarship) {
+                        const dist = s.mesh.position.distanceTo(this.player.position);
+                        if (dist < 5000) {
+                            const turret = s.mesh.userData.turret;
+                            const toPlayer = this.player.position.clone().sub(s.mesh.position.clone().add(turret.position)).normalize();
+                            // Turret looks at player
+                            const targetQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,-1), toPlayer);
+                            turret.quaternion.slerp(targetQuat, 0.05);
+                            
+                            s.mesh.userData.fireTimer -= delta;
+                            if (s.mesh.userData.fireTimer <= 0) {
+                                s.mesh.userData.fireTimer = 4.0 + Math.random() * 3;
+                                this.showRadio("WARNING: Enemy warship is targeting you!", 2000);
+                                // Fire flak bullet (slow but dangerous)
+                                const fb = new THREE.Mesh(new THREE.SphereGeometry(1.5, 6, 6), new THREE.MeshBasicMaterial({color:0xffaa00}));
+                                fb.position.copy(s.mesh.position).add(turret.position);
+                                this.scene.add(fb);
+                                const fDir = toPlayer.multiplyScalar(25);
+                                this.entities.bullets.push({ mesh: fb, life: 5.0, vel: fDir, isEnemy: true, isFlak: true });
+                            }
+                        }
+                    }
+                });
                 if(this.entities.birds) this.entities.birds.forEach(b => { b.mesh.translateZ(-b.speed); if(b.mesh.position.z < -20000) b.mesh.position.z = 20000; });
                 this.entities.airliners.forEach(a => { 
                     a.mesh.translateZ(a.speed); if(a.mesh.position.z > 40000) a.mesh.position.z = -40000; 
                     a.trailTimer += delta; if(a.trailTimer > 0.15) { this.createTrail(a.mesh.position.clone().add(new THREE.Vector3(0,0,10))); a.trailTimer = 0; }
                 });
+
+                // Weather logic: Lightning
+                if (!this.isDay && Math.random() < 0.005) {
+                    this.scene.background = new THREE.Color(0xffffff);
+                    setTimeout(() => { this.scene.background = new THREE.Color(0x050520); }, 50);
+                    this.radarInterference = 1.0;
+                    this.showRadio("ELECTROMAGNETIC INTERFERENCE DETECTED", 1000);
+                }
+                if (this.radarInterference > 0) this.radarInterference -= delta;
 
                 // Find nearest enemy for aiming & reticle
                 if(!this.fireTimer) this.fireTimer = 0;
@@ -1084,6 +1198,10 @@
                 // Missile firing logic
                 if(this.input.missile && nearestEnemy) {
                     this.spawnMissile(nearestEnemy.mesh);
+                    if (this.state.overdrive > 0) {
+                        this.missilesLeft++; // Negate consumption
+                        document.getElementById('missile-count').textContent = this.missilesLeft;
+                    }
                     this.input.missile = false;
                 } else if(this.input.missile) {
                     this.input.missile = false;
@@ -1166,23 +1284,35 @@
                                 if (en.isBoss) {
                                     en.hp -= 1;
                                     if (en.hp <= 0) {
+                                        this.lastKillPos = en.mesh.position.clone();
                                         this.scene.remove(en.mesh); this.entities.enemies.splice(ei, 1);
                                         this.state.kills++;
+                                        this.checkMissionWin();
                                     }
                                 } else {
+                                    this.lastKillPos = en.mesh.position.clone();
                                     this.scene.remove(en.mesh); this.entities.enemies.splice(ei, 1);
                                     b.life = 0;
                                     if(!b.isAlly) {
                                         this.state.kills++;
+                                        // Update OD Gauge
+                                        this.state.odGauge = Math.min(100, this.state.odGauge + 15);
+                                        const odFill = document.getElementById('od-fill');
+                                        odFill.style.width = this.state.odGauge + '%';
+                                        if (this.state.odGauge >= 100) {
+                                            document.getElementById('od-btn').style.display = 'flex';
+                                            if (!this.odReadyNotified) {
+                                                this.showRadio("OVERDRIVE READY! INITIATE WHEN READY.", 2500);
+                                                this.odReadyNotified = true;
+                                            }
+                                        }
+
                                         if(navigator.vibrate) navigator.vibrate(50);
                                         // Combo system
                                         this.combo.count++;
                                         this.combo.timer = 5.0;
                                         this.showCombo();
-                                        if(this.state.kills >= this.state.targetKills) {
-                                            // Slow-mo kill cam for last kill
-                                            this.slowmo = { active: true, timer: 2.5, target: en.mesh.position.clone(), angle: 0 };
-                                        }
+                                        this.checkMissionWin();
                                     }
                                 }
                             }
@@ -1230,15 +1360,18 @@
                     this.entities.enemies.forEach((en, ei) => {
                         if (m.mesh.position.distanceTo(en.mesh.position) < (en.isBoss ? 60 : 40)) {
                             this.createExplosion(en.mesh.position);
+                            this.lastKillPos = en.mesh.position.clone();
                             if (en.isBoss) {
                                 en.hp -= 5; // Missile deals more damage to boss
                                 if (en.hp <= 0) {
                                     this.scene.remove(en.mesh); this.entities.enemies.splice(ei, 1);
                                     this.state.kills++;
+                                    this.checkMissionWin();
                                 }
                             } else {
                                 this.scene.remove(en.mesh); this.entities.enemies.splice(ei, 1);
                                 this.state.kills++;
+                                this.checkMissionWin();
                             }
                             m.life = 0;
                         }
@@ -1252,16 +1385,19 @@
 
                 // Radar Update
                 const dots = document.getElementById('radar-dots'); dots.innerHTML = '';
-                [...this.entities.enemies, ...this.entities.allies, ...this.entities.landmarks].forEach(ent => {
-                    const dx = ent.mesh.position.x - this.player.position.x;
-                    const dz = ent.mesh.position.z - this.player.position.z;
-                    if(dx*dx + dz*dz < 10000*10000) {
-                        const dot = document.createElement('div'); dot.className = 'radar-dot';
-                        dot.style.left = (dx / 10000) * 65 + 65 + 'px'; dot.style.top = (dz / 10000) * 65 + 65 + 'px';
-                        dot.style.backgroundColor = ent.isAlly ? 'var(--ally)' : (ent.name ? 'white' : 'var(--danger)');
-                        dots.appendChild(dot);
-                    }
-                });
+                const interference = (this.radarInterference > 0 && Math.random() > 0.5);
+                if (!interference) {
+                    [...this.entities.enemies, ...this.entities.allies, ...this.entities.landmarks].forEach(ent => {
+                        const dx = ent.mesh.position.x - this.player.position.x;
+                        const dz = ent.mesh.position.z - this.player.position.z;
+                        if(dx*dx + dz*dz < 10000*10000) {
+                            const dot = document.createElement('div'); dot.className = 'radar-dot';
+                            dot.style.left = (dx / 10000) * 65 + 65 + 'px'; dot.style.top = (dz / 10000) * 65 + 65 + 'px';
+                            dot.style.backgroundColor = ent.isAlly ? 'var(--ally)' : (ent.name ? 'white' : 'var(--danger)');
+                            dots.appendChild(dot);
+                        }
+                    });
+                }
 
                 if(Math.abs(this.player.position.x) > 40000) this.player.position.x *= -0.99;
                 if(Math.abs(this.player.position.z) > 40000) this.player.position.z *= -0.99;
@@ -1317,6 +1453,7 @@
                         this.slowmo = null;
                         this.state.returning = true;
                         document.getElementById('msg-box').innerText = "MISSION CLEAR - RETURNING";
+                        this.showRadio("Target destroyed. Welcome home, Ace. Proceed to carrier for landing.", 5000);
                     }
                 } else {
                     this.camera.position.lerp(targetCamPos, 0.15);
@@ -1431,6 +1568,15 @@
                 this.upgrades[type] += 0.2;
                 document.getElementById('upgrade-box').style.display = 'none';
                 document.getElementById('msg-box').innerText = `${type.toUpperCase()} UPGRADED!`;
+            }
+
+            checkMissionWin() {
+                if(this.state.kills >= this.state.targetKills && !this.slowmo && !this.state.returning) {
+                    // Slow-mo kill cam for last kill
+                    this.slowmo = { active: true, timer: 2.5, target: this.player.position.clone().add(new THREE.Vector3(0,0,-100).applyQuaternion(this.player.quaternion)), angle: 0 };
+                    // If we have a recent kill position, use it
+                    if (this.lastKillPos) this.slowmo.target.copy(this.lastKillPos);
+                }
             }
 
             gameOver(success) {
