@@ -959,20 +959,24 @@
                         }
                     }
                 } else if (this.state.returning) {
-                    // Landing sequence
+                    // Landing sequence approach
                     const basePos = new THREE.Vector3(0, 8.5, 1200);
                     const dist = this.player.position.distanceTo(basePos);
-                    const toBase = basePos.clone().sub(this.player.position).normalize();
-                    const targetQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,-1), toBase);
-                    this.player.quaternion.slerp(targetQuat, 0.05);
+                    
+                    // Steer heading towards base but let auto-leveling handle pitch/roll
+                    const toBase = basePos.clone().sub(this.player.position);
+                    const targetAngle = Math.atan2(toBase.x, toBase.z) + Math.PI;
+                    const targetRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, targetAngle, 0));
+                    this.player.quaternion.slerp(targetRotation, 0.03);
+                    
                     this.speed = THREE.MathUtils.lerp(this.speed, 1.5, 0.02);
                     this.player.translateZ(-this.speed);
                     
-                    if (dist < 50) {
+                    if (dist < 60) {
                         this.state.returning = false;
                         this.gameOver(true);
                     }
-                    document.getElementById('msg-box').innerText = "LANDING APPROACH...";
+                    document.getElementById('msg-box').innerText = "AUTOPILOT RETURNING TO CARRIER...";
                 } else if(this.state.takeoff) {
                     // Auto takeoff: forced full thrust, 2x acceleration (half time)
                     this.input.thrust = 1.0;
@@ -1020,12 +1024,19 @@
                     const speedMult = this.state.overdrive > 0 ? 1.5 : 1.0;
                     this.speed = THREE.MathUtils.lerp(this.speed, this.input.thrust * this.diff.maxSpd * speedMult, 0.05);
                     
-                    // Safety: Prevent crash during slowmo or returning
+                    // Safety & Auto-Leveling during sequences
                     if (this.slowmo || this.state.returning) {
-                        if (this.player.position.y < 80) {
-                            this.player.position.y = THREE.MathUtils.lerp(this.player.position.y, 80, 0.1);
-                            const levelQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, this.player.rotation.y, 0));
-                            this.player.quaternion.slerp(levelQuat, 0.1);
+                        // Force horizontal orientation (Level pitch and roll)
+                        const levelQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, this.player.rotation.y, 0));
+                        this.player.quaternion.slerp(levelQuat, 0.08);
+                        
+                        // Maintain safe cruise altitude (150m) during return
+                        const safeCruiseAlt = 150;
+                        if (this.player.position.y < safeCruiseAlt) {
+                            this.player.position.y = THREE.MathUtils.lerp(this.player.position.y, safeCruiseAlt, 0.03);
+                        } else if (this.state.returning && this.player.position.y > safeCruiseAlt + 100) {
+                            // Gentle descent if too high
+                            this.player.position.y = THREE.MathUtils.lerp(this.player.position.y, safeCruiseAlt, 0.01);
                         }
                     }
 
