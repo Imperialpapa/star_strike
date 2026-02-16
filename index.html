@@ -254,6 +254,7 @@
         <div id="msg-box"></div>
         <div id="damage-flash"></div>
         <div id="damage-vignette"></div>
+        <div id="gforce-vignette" style="position: absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; opacity:0; z-index:88; background: radial-gradient(circle, transparent 40%, rgba(0,0,0,0.8) 100%); transition:opacity 0.2s;"></div>
         <div id="combo-text"></div>
         <div id="powerup-indicator"></div>
     </div>
@@ -438,13 +439,31 @@
                     this.scene.add(new THREE.Points(starsGeo, new THREE.PointsMaterial({color:0xffffff, size:25})));
                 }
 
-                // Ocean with wave geometry
+                // Ocean with enhanced material for better ground/air separation
                 this.ocean = new THREE.Mesh(
                     new THREE.PlaneGeometry(80000, 80000, 100, 100),
-                    new THREE.MeshStandardMaterial({ color: isDay ? 0x006699 : 0x001133, metalness: 0.7, roughness: 0.15, flatShading: true })
+                    new THREE.MeshStandardMaterial({ 
+                        color: isDay ? 0x004466 : 0x000510, 
+                        metalness: 0.8, 
+                        roughness: 0.2, 
+                        flatShading: true,
+                        emissive: isDay ? 0x001122 : 0x000000,
+                        emissiveIntensity: 0.2
+                    })
                 );
                 this.ocean.rotation.x = -Math.PI/2;
                 this.scene.add(this.ocean);
+
+                // Add a specific horizon line/ring for orientation
+                const horizonGeo = new THREE.TorusGeometry(38500, 100, 8, 64);
+                const horizonMat = new THREE.MeshBasicMaterial({ 
+                    color: isDay ? 0xffffff : 0x112244, 
+                    transparent: true, 
+                    opacity: isDay ? 0.15 : 0.3 
+                });
+                const horizon = new THREE.Mesh(horizonGeo, horizonMat);
+                horizon.rotation.x = Math.PI/2;
+                this.scene.add(horizon);
 
                 this.createLandmarks();
 
@@ -502,6 +521,14 @@
                     );
                     beach.rotation.x = -Math.PI/2; beach.position.set(cx, 0.3, cz);
                     this.scene.add(beach);
+                    
+                    // Sea foam ring around island for visual boundary
+                    const foam = new THREE.Mesh(
+                        new THREE.RingGeometry(iRadius + 80, iRadius + 150, 32),
+                        new THREE.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.4})
+                    );
+                    foam.rotation.x = -Math.PI/2; foam.position.set(cx, 0.6, cz);
+                    this.scene.add(foam);
                     // Buildings
                     for(let i=0; i<20; i++) {
                         const h = 30 + Math.random()*200;
@@ -1448,6 +1475,23 @@
                     t.position.copy(trailPos); this.scene.add(t);
                     this.entities.particles.push({ mesh: t, vel: new THREE.Vector3(0,0,0), life: 0.6 });
                 }
+                
+                // Low Altitude Water Spray
+                if (!this.state.takeoff && this.player.position.y < 40 && this.speed > 3) {
+                    const sprayPos = this.player.position.clone();
+                    sprayPos.y = 2; // On water surface
+                    for (let i = 0; i < 2; i++) {
+                        const s = new THREE.Mesh(new THREE.SphereGeometry(2 + Math.random() * 3, 4, 4), new THREE.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.4}));
+                        s.position.set(sprayPos.x + (Math.random()-0.5)*10, sprayPos.y, sprayPos.z + (Math.random()-0.5)*10);
+                        this.scene.add(s);
+                        this.entities.particles.push({ mesh: s, vel: new THREE.Vector3((Math.random()-0.5)*2, 1+Math.random()*2, (Math.random()-0.5)*2), life: 0.8, isSmoke: true });
+                    }
+                }
+
+                // G-Force Vignette based on rotation speed
+                const turnIntensity = this.joystickActive ? (Math.abs(this.input.joystick.x) + Math.abs(this.input.joystick.y)) : 0;
+                const gfVignette = document.getElementById('gforce-vignette');
+                gfVignette.style.opacity = Math.max(0, (turnIntensity - 0.7) * 0.8);
 
                 // Camera with shake on hit
                 if(!this.shakeAmount) this.shakeAmount = 0;
