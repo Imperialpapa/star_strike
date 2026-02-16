@@ -1019,6 +1019,16 @@
                     }
                     const speedMult = this.state.overdrive > 0 ? 1.5 : 1.0;
                     this.speed = THREE.MathUtils.lerp(this.speed, this.input.thrust * this.diff.maxSpd * speedMult, 0.05);
+                    
+                    // Safety: Prevent crash during slowmo or returning
+                    if (this.slowmo || this.state.returning) {
+                        if (this.player.position.y < 80) {
+                            this.player.position.y = THREE.MathUtils.lerp(this.player.position.y, 80, 0.1);
+                            const levelQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, this.player.rotation.y, 0));
+                            this.player.quaternion.slerp(levelQuat, 0.1);
+                        }
+                    }
+
                     this.player.translateZ(-this.speed);
                 }
 
@@ -1495,6 +1505,15 @@
                 }
 
                 if(!this.state.takeoff && this.player.position.y < 5) this.gameOver(false);
+                
+                // Altitude warning
+                if (!this.state.takeoff && !this.state.opening && this.player.position.y < 100 && !this.slowmo && !this.state.returning) {
+                    if (!this.lastPullUpTime || Date.now() - this.lastPullUpTime > 2000) {
+                        this.showRadio("WARNING: LOW ALTITUDE! PULL UP!", 1500);
+                        this.lastPullUpTime = Date.now();
+                        if(navigator.vibrate) navigator.vibrate([100, 100]);
+                    }
+                }
 
                 document.getElementById('alt-val').innerText = Math.floor(this.player.position.y);
                 document.getElementById('spd-val').innerText = (this.speed * 180).toFixed(0);
