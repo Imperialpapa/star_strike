@@ -986,24 +986,25 @@
                         }
                     }
                 } else if (this.state.returning) {
-                    // Landing sequence approach
-                    const basePos = new THREE.Vector3(0, 8.5, 1200);
-                    const dist = this.player.position.distanceTo(basePos);
+                    // Quick landing sequence (3 seconds)
+                    if (!this.returnTimer) this.returnTimer = 3.0;
+                    this.returnTimer -= delta;
                     
-                    // Steer heading towards base but let auto-leveling handle pitch/roll
+                    const basePos = new THREE.Vector3(0, 8.5, 1200);
                     const toBase = basePos.clone().sub(this.player.position);
                     const targetAngle = Math.atan2(toBase.x, toBase.z) + Math.PI;
                     const targetRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, targetAngle, 0));
-                    this.player.quaternion.slerp(targetRotation, 0.03);
+                    this.player.quaternion.slerp(targetRotation, 0.1);
                     
-                    this.speed = THREE.MathUtils.lerp(this.speed, 1.5, 0.02);
+                    this.speed = THREE.MathUtils.lerp(this.speed, 10.0, 0.1); // Speed up for quick return
                     this.player.translateZ(-this.speed);
                     
-                    if (dist < 60) {
+                    if (this.returnTimer <= 0) {
                         this.state.returning = false;
+                        this.returnTimer = null;
                         this.gameOver(true);
                     }
-                    document.getElementById('msg-box').innerText = "AUTOPILOT RETURNING TO CARRIER...";
+                    document.getElementById('msg-box').innerText = "MISSION COMPLETE - RETURNING TO CARRIER";
                 } else if(this.state.takeoff) {
                     // Auto takeoff: forced full thrust, 2x acceleration (half time)
                     this.input.thrust = 1.0;
